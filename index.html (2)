@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zen Study Planner</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root {
+  --bg: #eef8f1;
+  --card: #ffffff;
+  --green: #4caf75;
+  --green-soft: #cfeedd;
+  --text: #1f3d2b;
+  --muted: #6b8f7b;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;padding:16px;}
+.app{width:100%;max-width:420px;background:var(--card);border-radius:18px;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,0.08);}
+h1{text-align:center;color:var(--green);margin:6px 0;}
+.clock{text-align:center;font-size:1rem;color:var(--muted);margin-bottom:12px;}
+.label{font-size:0.8rem;color:var(--muted);margin-top:10px;}
+.progress-wrap{background:var(--green-soft);border-radius:12px;overflow:hidden;height:14px;margin:6px 0 10px;}
+.progress{height:100%;width:0%;background:var(--green);transition:width 0.3s ease;}
+.stats{font-size:0.85rem;display:flex;justify-content:space-between;margin-bottom:10px;}
+input,button{padding:8px;border-radius:10px;border:1px solid #cce5d6;outline:none;}
+button{background:var(--green);color:white;border:none;}
+.tasks{margin-top:12px;}
+.task{display:flex;gap:6px;align-items:center;margin-bottom:8px;}
+.task input[type="text"]{flex:2;}
+.task input[type="number"]{width:65px;}
+.done{text-decoration:line-through;opacity:0.6;}
+.footer{text-align:center;font-size:0.75rem;color:var(--muted);margin-top:10px;}
+canvas{margin-top:12px;border:1px solid #cce5d6;border-radius:12px;}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>Zen Study Planner</h1>
+<div class="clock" id="clock"></div>
+<div class="label">Wake-up time</div>
+<input type="time" id="wakeTime" value="04:00" onchange="updateDayStats()">
+<div class="label">Day progress</div>
+<div class="progress-wrap"><div class="progress" id="dayProgress"></div></div>
+<div class="stats">
+  <div id="hoursLeft">Hours left: —</div>
+  <div id="realisticHours">Realistic study: —</div>
+</div>
+<div class="label">Study progress (18h goal)</div>
+<div class="progress-wrap"><div class="progress" id="studyProgress"></div></div>
+<div class="stats">
+  <div id="doneHours">Done: 0h</div>
+  <div id="totalHours">Planned: 0h / 18h</div>
+</div>
+<div class="tasks" id="tasks"></div>
+<button onclick="addTask()">＋ Add Task</button>
+<canvas id="historyChart" width="400" height="200"></canvas>
+<div class="footer">Sri Lanka Time · Calm focus · No excuses</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Clock
+function getNowSL(){return new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Colombo"}));}
+function updateClock(){document.getElementById("clock").textContent="Sri Lanka Time · "+getNowSL().toLocaleTimeString();}
+setInterval(updateClock,1000);updateClock();
+
+// Tasks
+function addTask(name="",hours=""){const div=document.createElement("div");div.className="task";div.innerHTML=`<input type="checkbox" onchange="updateStudyProgress()"><input type="text" placeholder="Task" value="${name}"><input type="number" step="0.25" placeholder="h" value="${hours}" oninput="updateStudyProgress()">`;document.getElementById("tasks").appendChild(div);updateStudyProgress();saveDailyData();}
+
+// Study progress
+function updateStudyProgress(){let total=0,done=0;document.querySelectorAll(".task").forEach(t=>{const h=parseFloat(t.querySelector("input[type='number']").value)||0;total+=h;if(t.querySelector("input[type='checkbox']").checked){done+=h;t.classList.add("done");}else t.classList.remove("done");});document.getElementById("studyProgress").style.width=Math.min(done/18*100,100)+"%";document.getElementById("doneHours").textContent=`Done: ${done.toFixed(2)}h`;document.getElementById("totalHours").textContent=`Planned: ${total.toFixed(2)}h / 18h`;updateHistoryChart();saveDailyData();}
+
+// Day progress
+function updateDayStats(){const now=getNowSL();const wake=document.getElementById("wakeTime").value.split(":");const wakeTime=new Date(now);wakeTime.setHours(wake[0],wake[1],0,0);const end=new Date(now);end.setHours(24,0,0,0);const totalDay=(end-wakeTime)/3600000;const passed=(now-wakeTime)/3600000;const left=Math.max(totalDay-passed,0);const realistic=left*0.75;document.getElementById("dayProgress").style.width=Math.min(passed/totalDay*100,100)+"%";document.getElementById("hoursLeft").textContent=`Hours left: ${left.toFixed(1)}h`;document.getElementById("realisticHours").textContent=`Realistic study: ${realistic.toFixed(1)}h`;}
+setInterval(updateDayStats,60000);updateDayStats();
+
+// LocalStorage daily save
+function saveDailyData(){const today=getNowSL().toISOString().slice(0,10);const tasks=[];document.querySelectorAll(".task").forEach(t=>{tasks.push({name:t.querySelector("input[type='text']").value,hours:t.querySelector("input[type='number']").value,done:t.querySelector("input[type='checkbox']").checked})});localStorage.setItem("zen-"+today,JSON.stringify(tasks));updateHistoryChart();}
+function loadDailyData(){const today=getNowSL().toISOString().slice(0,10);const data=localStorage.getItem("zen-"+today);if(data){const tasks=JSON.parse(data);document.getElementById("tasks").innerHTML="";tasks.forEach(t=>addTask(t.name,t.hours));}updateStudyProgress();}
+window.addEventListener("load",loadDailyData);
+
+// History chart
+let chart=null;
+function updateHistoryChart(){const labels=[],data=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key="zen-"+d.toISOString().slice(0,10);labels.push(d.toISOString().slice(5,10));const t=JSON.parse(localStorage.getItem(key)||"[]");let sum=0;t.forEach(x=>{if(x.done)sum+=parseFloat(x.hours)||0;});data.push(sum);}if(chart)chart.destroy();const ctx=document.getElementById("historyChart").getContext("2d");chart=new Chart(ctx,{type:'bar',data:{labels, datasets:[{label:'Completed Hours',data,color:'#4caf75',backgroundColor:'#4caf75'}]},options:{scales:{y:{beginAtZero:true,max:18}},plugins:{legend:{display:false}}}});}
+</script>
+
+<script>
+// Preload example tasks
+addTask("Deep Focus",2.5);
+addTask("Problem Solving",2);
+addTask("Revision",2.5);
+addTask("Pain Zone",2.5);
+addTask("Evening Focus",2);
+</script>
+</body>
+</html>
